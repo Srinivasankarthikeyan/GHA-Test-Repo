@@ -14,8 +14,6 @@ on:
     paths:
       - 'src/**'           # Only trigger if files in src/ change
       - '!src/docs/**'     # Exclude docs folder (Negation)
-    paths-ignore:
-      - '**.md'            # Ignore all markdown files
 
   # 2. PULL REQUEST TRIGGERS (Types and Branches)
   pull_request:
