@@ -1,35 +1,327 @@
-# .github/workflows/01-basics.yml
-name: 01 - Basics and Contexts
+# .github/workflows/gh200-contexts-practice.yml
+name: GH-200 Contexts Practice - Complete Guide
 
-# Triggers: manual, on push to main, and on PR
+# ============================================================================
+# TRIGGERS - Understanding when workflows run
+# ============================================================================
 on:
-  workflow_dispatch: # Allows manual triggering from the UI
+  workflow_dispatch:  # Manual trigger - important for testing
     inputs:
       environment:
-        description: 'Target environment'
+        description: 'Target environment (staging/production)'
         required: true
+        type: choice
+        options:
+          - staging
+          - production
         default: 'staging'
+      deploy:
+        description: 'Perform deployment?'
+        required: true
+        type: boolean
+        default: false
+      build_number:
+        description: 'Build number'
+        required: false
+        type: number
+        default: 1
+  
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
 
+# ============================================================================
+# WORKFLOW-LEVEL ENV - Available to all jobs
+# ============================================================================
+env:
+  WORKFLOW_VAR: "I'm available everywhere"
+  APP_NAME: "MyApp"
+
 jobs:
-  print-context:
+  # ==========================================================================
+  # JOB 1: Basic Contexts Demo
+  # ==========================================================================
+  basic-contexts:
     runs-on: ubuntu-latest
+    # Job-level env - overrides workflow-level
+    env:
+      JOB_VAR: "I'm only in this job"
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Print GitHub Context
+      # -------------------------------------------------------------------------
+      # GITHUB CONTEXT - Most important for GH-200!
+      # Contains info about the workflow run and trigger event
+      # -------------------------------------------------------------------------
+      - name: GitHub Context - Workflow Info
         run: |
-          echo "Event name: ${{ github.event_name }}"
+          echo "=== GITHUB CONTEXT - Workflow Information ==="
+          echo "Event Name: ${{ github.event_name }}"
           echo "Repository: ${{ github.repository }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Input Environment: ${{ inputs.environment }}"
-          echo "Check Path: ${{ github.path }}"
+          echo "Repository Owner: ${{ github.repository_owner }}"
+          echo "Workflow Name: ${{ github.workflow }}"
+          echo "Actor (who triggered): ${{ github.actor }}"
+          echo "Triggering Actor: ${{ github.triggering_actor }}"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Run Number: ${{ github.run_number }}"
+          echo "Run Attempt: ${{ github.run_attempt }}"
+          echo "SHA: ${{ github.sha }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref Name: ${{ github.ref_name }}"
+          echo "Ref Type: ${{ github.ref_type }}"
+          echo "Workspace: ${{ github.workspace }}"
+          echo "Server URL: ${{ github.server_url }}"
+          echo "API URL: ${{ github.api_url }}"
 
-      - name: Conditional Step (Expression)
-        # This step only runs if the manual input is 'production'
-        if: ${{ inputs.environment == 'production' }}
-        run: echo "Running production-specific tasks!"
+      - name: GitHub Context - PR Specific
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "=== PR-SPECIFIC CONTEXT ==="
+          echo "Base Ref (target): ${{ github.base_ref }}"
+          echo "Head Ref (source): ${{ github.head_ref }}"
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+
+      # -------------------------------------------------------------------------
+      # RUNNER CONTEXT - Info about the runner executing the job
+      # -------------------------------------------------------------------------
+      - name: Runner Context
+        run: |
+          echo "=== RUNNER CONTEXT ==="
+          echo "OS: ${{ runner.os }}"
+          echo "Architecture: ${{ runner.arch }}"
+          echo "Runner Name: ${{ runner.name }}"
+          echo "Temp Directory: ${{ runner.temp }}"
+          echo "Tool Cache: ${{ runner.tool_cache }}"
+          echo "Environment: ${{ runner.environment }}"
+
+      # -------------------------------------------------------------------------
+      # ENV CONTEXT - Variables set in workflow/job/step
+      # Hierarchy: Step > Job > Workflow (most specific wins)
+      # -------------------------------------------------------------------------
+      - name: Env Context
+        run: |
+          echo "=== ENV CONTEXT ==="
+          echo "Workflow var: ${{ env.WORKFLOW_VAR }}"
+          echo "Job var: ${{ env.JOB_VAR }}"
+          echo "Step var: ${{ env.STEP_VAR }}"
+        env:
+          STEP_VAR: "I'm only in this step"
+
+      # -------------------------------------------------------------------------
+      # INPUTS CONTEXT - From workflow_dispatch or reusable workflow
+      # -------------------------------------------------------------------------
+      - name: Inputs Context
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "=== INPUTS CONTEXT ==="
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Deploy: ${{ inputs.deploy }}"
+          echo "Build Number: ${{ inputs.build_number }}"
+
+      # -------------------------------------------------------------------------
+      # SECRETS CONTEXT - Sensitive values (masked in logs)
+      # GITHUB_TOKEN is automatically available
+      # -------------------------------------------------------------------------
+      - name: Secrets Context
+        run: |
+          echo "=== SECRETS CONTEXT ==="
+          echo "GITHUB_TOKEN is available: ${{ secrets.GITHUB_TOKEN != '' }}"
+          echo "Note: Secret values are masked in logs"
+
+      # -------------------------------------------------------------------------
+      # JOB CONTEXT - Info about current job
+      # -------------------------------------------------------------------------
+      - name: Job Context
+        run: |
+          echo "=== JOB CONTEXT ==="
+          echo "Job Status: ${{ job.status }}"
+          echo "Container ID: ${{ job.container.id }}"
+
+      # -------------------------------------------------------------------------
+      # VARS CONTEXT - Configuration variables (non-secret)
+      # Set at repo/org/environment level
+      # -------------------------------------------------------------------------
+      - name: Vars Context
+        run: |
+          echo "=== VARS CONTEXT ==="
+          echo "Note: vars context reads from repo/org/environment settings"
+          echo "Example: ${{ vars.MY_CONFIG_VAR }}"
+
+  # ==========================================================================
+  # JOB 2: Steps Context Demo
+  # ==========================================================================
+  steps-context-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Step with Output
+        id: step1
+        run: |
+          echo "result=success" >> $GITHUB_OUTPUT
+          echo "message=Hello from step 1" >> $GITHUB_OUTPUT
+
+      - name: Step with continue-on-error
+        id: step2
+        continue-on-error: true
+        run: |
+          echo "This step will fail but continue"
+          exit 1
+
+      - name: Using Steps Context
+        run: |
+          echo "=== STEPS CONTEXT ==="
+          echo "Step1 Output - result: ${{ steps.step1.outputs.result }}"
+          echo "Step1 Output - message: ${{ steps.step1.outputs.message }}"
+          echo "Step1 Outcome: ${{ steps.step1.outcome }}"
+          echo "Step1 Conclusion: ${{ steps.step1.conclusion }}"
+          echo "Step2 Outcome: ${{ steps.step2.outcome }}"
+          echo "Step2 Conclusion: ${{ steps.step2.conclusion }}"
+          echo ""
+          echo "Note: outcome shows actual result, conclusion shows after continue-on-error"
+
+  # ==========================================================================
+  # JOB 3: Matrix Strategy Context
+  # ==========================================================================
+  matrix-demo:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node-version: [16, 18, 20]
+        include:
+          - os: ubuntu-latest
+            node-version: 20
+            special: true
+    
+    steps:
+      - name: Matrix and Strategy Context
+        run: |
+          echo "=== MATRIX CONTEXT ==="
+          echo "OS: ${{ matrix.os }}"
+          echo "Node Version: ${{ matrix.node-version }}"
+          echo "Special: ${{ matrix.special }}"
+          echo ""
+          echo "=== STRATEGY CONTEXT ==="
+          echo "Job Index: ${{ strategy.job-index }}"
+          echo "Job Total: ${{ strategy.job-total }}"
+          echo "Fail Fast: ${{ strategy.fail-fast }}"
+          echo "Max Parallel: ${{ strategy.max-parallel }}"
+
+  # ==========================================================================
+  # JOB 4: Job Dependencies and Needs Context
+  # ==========================================================================
+  job-with-outputs:
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.build.outputs.build_id }}
+      artifact_name: ${{ steps.build.outputs.artifact_name }}
+    steps:
+      - name: Generate Outputs
+        id: build
+        run: |
+          echo "build_id=BUILD-$(date +%s)" >> $GITHUB_OUTPUT
+          echo "artifact_name=my-app-v1.0" >> $GITHUB_OUTPUT
+
+  dependent-job:
+    needs: job-with-outputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Using Needs Context
+        run: |
+          echo "=== NEEDS CONTEXT ==="
+          echo "Dependency Job Result: ${{ needs.job-with-outputs.result }}"
+          echo "Build ID: ${{ needs.job-with-outputs.outputs.build_id }}"
+          echo "Artifact Name: ${{ needs.job-with-outputs.outputs.artifact_name }}"
+
+  # ==========================================================================
+  # JOB 5: Conditional Execution with Contexts
+  # ==========================================================================
+  conditional-demo:
+    runs-on: ubuntu-latest
+    # Job-level condition using contexts
+    if: github.event_name == 'push' || inputs.environment == 'production'
+    steps:
+      - name: Conditional Step - Branch Check
+        if: github.ref == 'refs/heads/main'
+        run: echo "Running on main branch!"
+
+      - name: Conditional Step - Event Check
+        if: github.event_name == 'pull_request'
+        run: echo "Running on PR!"
+
+      - name: Conditional Step - Actor Check
+        if: github.actor == 'dependabot[bot]'
+        run: echo "Triggered by Dependabot"
+
+      - name: Using Status Check Functions
+        if: always()  # Runs even if previous steps fail
+        run: echo "This always runs"
+
+      - name: Failure Handling
+        if: failure()  # Only runs if previous step failed
+        run: echo "Previous step failed!"
+
+      - name: Success Handling
+        if: success()  # Only runs if all previous steps succeeded
+        run: echo "All previous steps succeeded!"
+
+  # ==========================================================================
+  # JOB 6: Dump All Contexts (Debugging)
+  # ==========================================================================
+  dump-all-contexts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump GitHub Context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: echo "$GITHUB_CONTEXT"
+
+      - name: Dump Job Context
+        env:
+          JOB_CONTEXT: ${{ toJson(job) }}
+        run: echo "$JOB_CONTEXT"
+
+      - name: Dump Steps Context
+        env:
+          STEPS_CONTEXT: ${{ toJson(steps) }}
+        run: echo "$STEPS_CONTEXT"
+
+      - name: Dump Runner Context
+        env:
+          RUNNER_CONTEXT: ${{ toJson(runner) }}
+        run: echo "$RUNNER_CONTEXT"
+
+      - name: Dump Strategy Context
+        env:
+          STRATEGY_CONTEXT: ${{ toJson(strategy) }}
+        run: echo "$STRATEGY_CONTEXT"
+
+      - name: Dump Matrix Context
+        env:
+          MATRIX_CONTEXT: ${{ toJson(matrix) }}
+        run: echo "$MATRIX_CONTEXT"
+
+      - name: Dump Env Context
+        env:
+          ENV_CONTEXT: ${{ toJson(env) }}
+        run: echo "$ENV_CONTEXT"
+
+      - name: Dump Vars Context
+        env:
+          VARS_CONTEXT: ${{ toJson(vars) }}
+        run: echo "$VARS_CONTEXT"
+
+      - name: Dump Needs Context
+        env:
+          NEEDS_CONTEXT: ${{ toJson(needs) }}
+        run: echo "$NEEDS_CONTEXT"
+
+      - name: Dump Inputs Context
+        env:
+          INPUTS_CONTEXT: ${{ toJson(inputs) }}
+        run: echo "$INPUTS_CONTEXT"
