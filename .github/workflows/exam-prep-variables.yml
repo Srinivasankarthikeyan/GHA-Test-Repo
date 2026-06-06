@@ -1,0 +1,155 @@
+name: Exam Prep - Variables & Contexts
+
+# =========================================================================
+# 1. WORKFLOW-LEVEL ENVIRONMENT VARIABLES
+# =========================================================================
+# Available to all jobs in this workflow.
+# Lowest precedence (overridden by job or step level).
+env:
+  WORKFLOW_VAR: "I am defined at the workflow level"
+  SHARED_VAR: "Workflow level value"
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_var:
+        description: 'Test input variable'
+        required: true
+        default: 'Hello Input'
+        type: string
+
+jobs:
+  # =========================================================================
+  # JOB 1: CORE VARIABLE CONCEPTS & PRECEDENCE
+  # =========================================================================
+  job1-core-variables:
+    runs-on: ubuntu-latest
+    
+    # 2. JOB-LEVEL ENVIRONMENT VARIABLES
+    # Available to all steps in this job.
+    # Overrides workflow-level variables with the same name.
+    env:
+      JOB_VAR: "I am defined at the job level"
+      SHARED_VAR: "Job level overrides Workflow level"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 1. Default Runner Variables
+        # These are provided automatically by the GitHub Actions runner.
+        # Note: You CANNOT set variables starting with GITHUB_ in your YAML.
+        run: |
+          echo "Runner OS: $RUNNER_OS"
+          echo "Workspace Path: $GITHUB_WORKSPACE"
+          echo "Commit SHA: $GITHUB_SHA"
+          echo "Ref Name: $GITHUB_REF_NAME"
+
+      - name: 2. Variable Precedence Test
+        run: |
+          echo "Workflow Var: $WORKFLOW_VAR"
+          echo "Job Var: $JOB_VAR"
+          echo "Shared Var: $SHARED_VAR" # Will print "Job level overrides..."
+
+      - name: 3. Step-Level Environment Variables
+        # 3. STEP-LEVEL ENVIRONMENT VARIABLES
+        # Highest precedence. Overrides job and workflow levels.
+        env:
+          STEP_VAR: "I am defined at the step level"
+          SHARED_VAR: "Step level overrides EVERYTHING"
+        run: |
+          echo "Step Var: $STEP_VAR"
+          echo "Shared Var: $SHARED_VAR" # Will print "Step level overrides..."
+
+      - name: 4. Using Contexts as Variables
+        # Contexts allow you to access variable data dynamically using ${{ }}
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Input Value: ${{ inputs.input_var }}"
+          echo "Environment Context: ${{ env.WORKFLOW_VAR }}"
+
+      - name: 5. Setting Variables Dynamically ($GITHUB_ENV)
+        # Exam Focus: How to pass data from one step to another!
+        # You append to the $GITHUB_ENV file.
+        run: |
+          echo "DYNAMIC_VAR=I was created dynamically in a previous step!" >> $GITHUB_ENV
+          echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: 6. Using Dynamically Set Variables
+        # CRITICAL EXAM TRAP: 
+        # You MUST use shell syntax ($VAR) to read variables created via $GITHUB_ENV.
+        # You CANNOT use context syntax (${{ env.VAR }}) because contexts are evaluated 
+        # before the step runs!
+        run: |
+          echo "Dynamic Var (Correct): $DYNAMIC_VAR"
+          # echo "Dynamic Var (Wrong): ${{ env.DYNAMIC_VAR }}" # This would be empty!
+
+      - name: 7. Repository & Organization Variables (vars context)
+        # Exam Focus: 'vars' vs 'secrets'. 'vars' are for non-sensitive config.
+        # Set these in Repo Settings -> Secrets and variables -> Actions -> Variables
+        run: |
+          echo "Repo Variable: ${{ vars.MY_REPO_VAR }}"
+          # Using the '||' operator for fallback if the variable doesn't exist
+          echo "With Fallback: ${{ vars.MY_REPO_VAR || 'Default Fallback Value' }}"
+
+      - name: 8. Variable Naming Rules
+        env:
+          VALID_NAME_1: "Valid"
+          valid_lower: "Also valid"
+          # INVALID_RULES:
+          # 1_INVALID: "Cannot start with a number"
+          # GITHUB_CUSTOM: "Cannot start with GITHUB_"
+          # HAS SPACE: "Cannot contain spaces"
+        run: |
+          echo "Valid 1: $VALID_NAME_1"
+          echo "Valid Lower: $valid_lower"
+
+  # =========================================================================
+  # JOB 2: MATRIX VARIABLES
+  # =========================================================================
+  job2-matrix-variables:
+    runs-on: ubuntu-latest
+    # Exam Focus: Matrix strategy creates variables for each combination.
+    strategy:
+      matrix:
+        node-version: [18, 20]
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - node-version: 20
+            os: ubuntu-latest
+            special-var: "This is a special variable for Node 20 on Ubuntu"
+            
+    steps:
+      - name: Print Matrix Variables
+        run: |
+          echo "Testing Node ${{ matrix.node-version }} on ${{ matrix.os }}"
+          echo "Special Var: ${{ matrix.special-var || 'Not defined for this combo' }}"
+
+  # =========================================================================
+  # JOB 3: JOB OUTPUTS & DEPENDENCY VARIABLES
+  # =========================================================================
+  job3-outputs:
+    needs: job1-core-variables
+    runs-on: ubuntu-latest
+    # Define outputs at the job level to pass them to other jobs
+    outputs:
+      my-job-output: ${{ steps.set-out.outputs.step-output }}
+    steps:
+      - name: Set Job Output
+        id: set-out
+        # Use $GITHUB_OUTPUT to pass data out of a step
+        run: echo "step-output=Success from Job 3" >> $GITHUB_OUTPUT
+
+      - name: Read Step Output
+        # You CAN use context syntax here because 'steps' context is updated after the step completes.
+        run: echo "The step output was ${{ steps.set-out.outputs.step-output }}"
+
+  job4-consume-outputs:
+    needs: job3-outputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consume Output from Previous Job
+        run: |
+          echo "Job 3 Output: ${{ needs.job3-outputs.outputs.my-job-output }}"
+          echo "Job 3 Result: ${{ needs.job3-outputs.result }}"
