@@ -1,0 +1,146 @@
+name: Exam Prep - Comprehensive Triggers
+
+# =========================================================================
+# EVENTS THAT TRIGGER WORKFLOW
+# =========================================================================
+on:
+  # 1. PUSH TRIGGERS (Heavily tested: Branches, Tags, Paths)
+  push:
+    branches:
+      - main
+      - 'release/**'       # Wildcard matching
+    tags:
+      - 'v*'               # Trigger on version tags
+    paths:
+      - 'src/**'           # Only trigger if files in src/ change
+      - '!src/docs/**'     # Exclude docs folder (Negation)
+    paths-ignore:
+      - '**.md'            # Ignore all markdown files
+
+  # 2. PULL REQUEST TRIGGERS (Types and Branches)
+  pull_request:
+    types: 
+      - opened
+      - synchronize        # Triggered when new commits are pushed to the PR branch
+      - reopened
+      - closed
+    branches:
+      - main
+
+  # 3. PULL_REQUEST_TARGET (Security Exam Topic!)
+  # Runs in the context of the BASE branch, allowing access to secrets for PRs from forks
+  pull_request_target:
+    types: [labeled, opened]
+    branches:
+      - main
+
+  # 4. MANUAL TRIGGER (workflow_dispatch)
+  # Exam focus: Defining inputs (string, boolean, choice, environment)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      debug_enabled:
+        description: 'Enable debug logging'
+        required: false
+        type: boolean
+        default: false
+      custom_tag:
+        description: 'Enter a custom tag'
+        required: false
+        type: string
+
+  # 5. SCHEDULED TRIGGER (Cron syntax)
+  # Exam focus: UTC time, 5-part cron syntax
+  schedule:
+    - cron: '0 0 * * *'      # Every day at midnight UTC
+    - cron: '30 5 * * 1,3'   # At 05:30 UTC on Monday and Wednesday
+
+  # 6. REUSABLE WORKFLOW TRIGGER (workflow_call)
+  # Exam focus: Passing inputs, secrets, and defining outputs
+  workflow_call:
+    inputs:
+      username:
+        required: true
+        type: string
+    secrets:
+      api-token:
+        required: true
+    outputs:
+      my-output:
+        description: "An output from this workflow"
+        value: ${{ jobs.exam-job.outputs.job-output }}
+
+  # 7. WORKFLOW RUN TRIGGER
+  # Exam focus: Triggering based on the completion of ANOTHER workflow
+  workflow_run:
+    workflows: ["Upstream Workflow Name"] # Must match the 'name:' of the other workflow exactly
+    types: 
+      - completed
+    branches:
+      - main
+
+  # 8. REPOSITORY DISPATCH (Custom Webhooks)
+  # Exam focus: Triggering via API with custom event types
+  repository_dispatch:
+    types: 
+      - custom-deploy-event
+      - external-api-trigger
+
+  # 9. ISSUE & COMMENT TRIGGERS
+  issues:
+    types: [opened, edited, deleted, labeled]
+  issue_comment:
+    types: [created, edited]
+
+  # 10. RELEASE TRIGGERS
+  release:
+    types: [published, created, edited]
+
+  # 11. BRANCH/TAG CREATION & DELETION
+  create:
+    branches: ['feature/**']
+  delete:
+    branches: ['feature/**']
+
+# =========================================================================
+# JOBS
+# =========================================================================
+jobs:
+  exam-job:
+    runs-on: ubuntu-latest
+    
+    # Defining outputs so the workflow_call trigger can use them
+    outputs:
+      job-output: ${{ steps.set-output.outputs.my-val }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Show Trigger Context
+        id: set-output
+        run: |
+          echo "The event that triggered this is: ${{ github.event_name }}"
+          echo "The specific action was: ${{ github.event.action }}"
+          echo "my-val=Success" >> $GITHUB_OUTPUT
+
+      # Exam focus: Using 'if' conditions to check specific trigger details
+      - name: Run only if PR was closed
+        if: github.event_name == 'pull_request' && github.event.action == 'closed'
+        run: echo "This PR was closed or merged!"
+
+      - name: Run only if Manual Trigger is 'prod'
+        if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+        run: echo "Deploying to Production manually!"
+
+      - name: Run only on Schedule
+        if: github.event_name == 'schedule'
+        run: echo "This was triggered by Cron!"
