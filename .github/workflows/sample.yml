@@ -27,6 +27,7 @@ jobs:
           echo "Repository: ${{ github.repository }}"
           echo "Actor: ${{ github.actor }}"
           echo "Input Environment: ${{ inputs.environment }}"
+          echo "Check Path: ${{ github.path }}"
 
       - name: Conditional Step (Expression)
         # This step only runs if the manual input is 'production'
